@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>cachorrinhos</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#1a1a2e;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+#wrap{position:relative;width:100%;height:100%}
+canvas{display:block;width:100%;height:100%;image-rendering:pixelated;image-rendering:crisp-edges}
+#fade{position:fixed;inset:0;background:#1a1a2e;z-index:10;transition:opacity 1.5s;pointer-events:none}
+
+/* DOM text overlays - always crisp */
+#intro-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;z-index:2;background:rgba(0,0,0,0.3)}
+#intro-title{font-family:'Courier New',monospace;font-size:22px;font-weight:bold;color:#ffe080;text-shadow:0 2px 0 rgba(0,0,0,0.7);letter-spacing:2px}
+#intro-sub{font-family:'Courier New',monospace;font-size:13px;color:#fff;margin-top:14px;animation:blinkT 1.2s ease-in-out infinite}
+@keyframes blinkT{0%,100%{opacity:0}50%{opacity:1}}
+
+#textbox-overlay{position:absolute;left:4%;right:4%;bottom:6%;background:rgba(26,26,46,0.95);border:3px solid #6a4c93;border-radius:2px;padding:12px 14px 18px;z-index:3;display:none;min-height:72px;box-shadow:inset 1px 1px 0 rgba(106,76,147,0.3),0 4px 12px rgba(0,0,0,0.5)}
+#textbox-text{font-family:'Courier New',monospace;font-size:14px;line-height:1.55;color:#fff;display:inline}
+#textbox-cursor{display:inline-block;width:7px;height:7px;background:#ffe080;margin-left:3px;vertical-align:middle;animation:blinkC 0.6s step-end infinite}
+@keyframes blinkC{0%,100%{opacity:1}50%{opacity:0}}
+#textbox-tap{position:absolute;right:10px;bottom:6px;font-family:'Courier New',monospace;font-size:10px;color:rgba(255,224,128,0.7)}
+
+#rope-overlay{position:absolute;right:3%;top:16%;z-index:2;display:none;text-align:center;pointer-events:none}
+#rope-label{font-family:'Courier New',monospace;font-size:13px;font-weight:bold;color:#ffe080;text-shadow:0 1px 2px rgba(0,0,0,0.7)}
+#rope-count{font-family:'Courier New',monospace;font-size:12px;color:#fff;margin-top:80px;text-shadow:0 1px 2px rgba(0,0,0,0.7)}
+
+#ending-overlay{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;z-index:3;pointer-events:none}
+#ending-msg{font-family:'Courier New',monospace;font-size:18px;font-weight:bold;color:#ffe080;text-shadow:0 2px 6px rgba(0,0,0,0.6);text-align:center;padding:0 24px}
+</style>
+</head>
+<body>
+<div id="fade"></div>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="intro-overlay">
+    <div id="intro-title">✦ Para Você ✦</div>
+    <div id="intro-sub">toque para começar</div>
+  </div>
+  <div id="textbox-overlay">
+    <span id="textbox-text"></span><span id="textbox-cursor">▪</span>
+    <div id="textbox-tap"></div>
+  </div>
+  <div id="rope-overlay">
+    <div id="rope-label">Puxe ↓</div>
+    <div id="rope-count">0/12</div>
+  </div>
+  <div id="ending-overlay">
+    <div id="ending-msg"></div>
+  </div>
+</div>
+<audio id="bgm" loop preload="auto"><source src="music.mp3" type="audio/mpeg"></audio>
+<script>
+const TEXTS=[
+  "oi :]... ta meio pesado né? voce ai se arrastando e até se sentino deixada de lado por gente importante pra voce",
+  "eu sei que tem dias que você se sente meio... esquecida igual hoje, que vc sente parecendo que voce ate num eh lembrada ou de repente, desconsiderada",
+  "e dói mais quando vem de quem você mais gosta possivel. quase como se as vezes fosse uma pétala jogada num jardim cheio com outras parecidas, que se murcham depois",
+  "mas você é como uma raiz, ninguem te vê o tempo todo mas tá ali se enraizando e cada vez mais crescendo e se moldando e um dia as pessoas vão perceber isso",
+  "mesmo que as vezes as pessoas se percam no próprio mundinho. nesse mundinho voce é sim digna de ser amada, você aliás é amada",
+  "e não é sobre merecer ou não, ou ser mais ou menos, ou ser a melhor ou a pior. é só sobre ser voce, e voce é amada por isso. sempre foi, mesmo que as vezes seja até difícil de acreditar nisso",
+  "e eu vejo o quanto você tenta, sabia? pra você que se preocupa tanto, você tá sempre fazendo o melhor possível",
+  "desde acordar cedo, desde planejar antecipadamente. sabe as vezes que você faz as coisas muito antes dos outros? eu sei mais do que ninguém o quanto você quer conquistar o mundão todo",
+  "mesmo quando ninguém mais percebe, você não desistiu. a sua alma, do seu eu do passado da sua você de agora tá ai bombardeada de sonhos lindos que ainda vão se realizar, e você vai sera fortunada por esse sucesso que tanto almeja",
+  "e você é esse algo raro que vai dar certo, você é essa centelha que não é tardia, é vislumbrante. você perdurará em holofotes e eu acredito em você",
+  "e mesmo que o mundo demore a ver ou demonstrar o que você merece ter...",
+  "...eu já vi tudo isso. eu tenho orgulho de você ♡"
+];
+const FINAL_TEXT="e você nunca vai estar sozinha. ♡";
+
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+const GW=160,GH=284;
+canvas.width=GW;canvas.height=GH;
+ctx.imageSmoothingEnabled=false;
+
+const introOverlay=document.getElementById('intro-overlay');
+const textboxOverlay=document.getElementById('textbox-overlay');
+const textboxText=document.getElementById('textbox-text');
+const textboxCursor=document.getElementById('textbox-cursor');
+const textboxTap=document.getElementById('textbox-tap');
+const ropeOverlay=document.getElementById('rope-overlay');
+const ropeCount=document.getElementById('rope-count');
+const endingOverlay=document.getElementById('ending-overlay');
+const endingMsg=document.getElementById('ending-msg');
+
+const C={
+  sky1:'#3b4994',sky2:'#5b6abf',sky3:'#7b8bd4',
+  grass1:'#2d5a27',grass2:'#3a7a32',grass3:'#4a9a42',grass4:'#5ab552',
+  skin:'#fde0c4',skinSh:'#e8c4a0',
+  hair:'#1a1a2e',hairHi:'#2a2a4e',
+  dress:'#8b5fbf',dressSh:'#6a4393',dressHi:'#a070d0',
+  eye:'#1a1a2e',blush:'#f0a0a0',
+  white:'#ffffff',cream:'#f5f0e0',
+  pupNose:'#2a2020',pupEye:'#1a1a1a',pupTongue:'#e06070',pupEar:'#e8ddd0',
+  rope:'#c4956a',ropeHi:'#dab080',
+  star:'#ffe080',heart:'#e06080',
+  flower1:'#ff7090',flower2:'#ffcc44',flower3:'#90d0ff',
+};
+
+let phase='intro',tick=0,puppyCount=0,puppies=[],ropeProgress=0,pulling=false,pullStartY=0;
+let girlMood=0,displayedText='',textCharIndex=0,endingTimer=0;
+let hearts=[],stars=[],girlBlink=0,grassOffset=[],flowers=[],sparkles=[];
+let typewriterInterval=null;
+
+const CENTER_X=GW/2,CENTER_Y=152;
+const PUPPY_RADIUS=42,PUPPY_LICK_RADIUS=17;
+
+function initPuppyPositions(){
+  puppies=[];
+  for(let i=0;i<12;i++){
+    const a=(i/12)*Math.PI*2-Math.PI/2;
+    const tx=CENTER_X+Math.cos(a)*PUPPY_RADIUS;
+    const ty=CENTER_Y+Math.sin(a)*(PUPPY_RADIUS*0.55)+10;
+    const sx=CENTER_X+Math.cos(a)*130;
+    const sy=CENTER_Y+Math.sin(a)*130;
+    const lx=CENTER_X+Math.cos(a)*PUPPY_LICK_RADIUS;
+    const ly=CENTER_Y+Math.sin(a)*(PUPPY_LICK_RADIUS*0.5)+4;
+    puppies.push({x:sx,y:sy,targetX:tx,targetY:ty,lickX:lx,lickY:ly,arrived:false,arriving:false,licking:false,frame:Math.random()*100|0});
+  }
+}
+function initFlowers(){
+  flowers=[];
+  for(let i=0;i<25;i++) flowers.push({x:Math.random()*GW,y:168+Math.random()*110,color:[C.flower1,C.flower2,C.flower3][Math.random()*3|0],size:1+Math.random()*2|0,phase:Math.random()*Math.PI*2});
+}
+function initGrass(){grassOffset=[];for(let i=0;i<GW;i++) grassOffset.push(Math.random()*3|0);}
+
+const bgm=document.getElementById('bgm');
+let musicStarted=false;
+function startMusic(){if(musicStarted)return;musicStarted=true;bgm.volume=0.4;bgm.play().catch(()=>{});}
+
+// ── SKY ──
+function drawSky(){
+  [[0,42,C.sky1],[42,82,C.sky2],[82,132,C.sky3]].forEach(([y1,y2,c])=>{ctx.fillStyle=c;ctx.fillRect(0,y1,GW,y2-y1);});
+  if(!stars.length) for(let i=0;i<18;i++) stars.push({x:Math.random()*GW|0,y:Math.random()*84|0,p:Math.random()*Math.PI*2});
+  stars.forEach(s=>{ctx.fillStyle=`rgba(255,224,128,${0.3+0.7*Math.abs(Math.sin(tick*0.02+s.p))})`;ctx.fillRect(s.x,s.y,1,1);});
+}
+
+// ── GROUND ──
+function drawGround(){
+  ctx.fillStyle=C.grass2;ctx.fillRect(0,130,GW,GH-130);
+  for(let x=0;x<GW;x+=2){const h=grassOffset[x]||0;ctx.fillStyle=(x+tick)%7<3?C.grass3:C.grass1;ctx.fillRect(x,130-h,2,2+h);}
+  flowers.forEach(f=>{
+    const sw=Math.sin(tick*0.03+f.phase)*0.5;
+    ctx.fillStyle=C.grass4;ctx.fillRect(f.x,f.y+2,1,3);
+    ctx.fillStyle=f.color;ctx.fillRect(f.x-f.size/2+sw,f.y,f.size,f.size);
+    ctx.fillStyle=C.flower2;ctx.fillRect(f.x+sw,f.y+1,1,1);
+  });
+}
+
+// ── GIRL (sitting front, hugging knees, cute) ──
+function drawGirl(x,y,happy){
+  const b=Math.sin(tick*0.04)*0.4;
+  // Shadow
+  ctx.fillStyle='rgba(0,0,0,0.12)';
+  ctx.fillRect(x-9,y,18,3);
+
+  // Hair behind (long strands down sides)
+  ctx.fillStyle=C.hair;
+  ctx.fillRect(x-9,y-16+b,3,14);
+  ctx.fillRect(x+6,y-16+b,3,14);
+
+  // Dress / body
+  ctx.fillStyle=C.dressSh;
+  ctx.fillRect(x-8,y-10+b,16,10);
+  ctx.fillStyle=C.dress;
+  ctx.fillRect(x-7,y-11+b,14,10);
+  ctx.fillStyle=C.dressHi;
+  ctx.fillRect(x-5,y-11+b,2,1);
+
+  // Knees pulled up
+  ctx.fillStyle=C.skin;
+  ctx.fillRect(x-5,y-13+b,4,6);
+  ctx.fillRect(x+1,y-13+b,4,6);
+  ctx.fillStyle=C.skinSh;
+  ctx.fillRect(x-5,y-8+b,4,1);
+  ctx.fillRect(x+1,y-8+b,4,1);
+
+  // Arms around knees
+  ctx.fillStyle=C.skin;
+  ctx.fillRect(x-7,y-12+b,3,6);
+  ctx.fillRect(x+4,y-12+b,3,6);
+  ctx.fillStyle=C.skin;
+  ctx.fillRect(x-2,y-10+b,4,2); // hands clasped
+  ctx.fillStyle=C.dress;
+  ctx.fillRect(x-8,y-13+b,3,3); // left sleeve
+  ctx.fillRect(x+5,y-13+b,3,3); // right sleeve
+
+  // Shoes
+  ctx.fillStyle='#5a3860';
+  ctx.fillRect(x-6,y-2+b,5,2);
+  ctx.fillRect(x+1,y-2+b,5,2);
+
+  // Head
+  ctx.fillStyle=C.skin;
+  ctx.fillRect(x-6,y-23+b,12,10);
+  ctx.fillRect(x-5,y-24+b,10,1);
+
+  // Hair on head
+  ctx.fillStyle=C.hair;
+  ctx.fillRect(x-8,y-28+b,16,6);
+  ctx.fillRect(x-9,y-25+b,18,4);
+  ctx.fillRect(x-8,y-23+b,3,8);
+  ctx.fillRect(x+5,y-23+b,3,8);
+  ctx.fillRect(x-6,y-24+b,12,3); // fringe
+  ctx.fillRect(x-6,y-22+b,2,2);
+  ctx.fillRect(x+4,y-22+b,2,2);
+  ctx.fillStyle=C.hairHi;
+  ctx.fillRect(x-2,y-28+b,4,1);
+  ctx.fillRect(x+1,y-27+b,2,1);
+
+  // Face
+  if(happy){
+    ctx.fillStyle=C.eye;
+    // ^_^ eyes
+    ctx.fillRect(x-5,y-19+b,1,1);ctx.fillRect(x-4,y-20+b,1,1);ctx.fillRect(x-3,y-19+b,1,1);
+    ctx.fillRect(x+2,y-19+b,1,1);ctx.fillRect(x+3,y-20+b,1,1);ctx.fillRect(x+4,y-19+b,1,1);
+    ctx.fillStyle=C.blush;
+    ctx.fillRect(x-6,y-18+b,3,2);ctx.fillRect(x+3,y-18+b,3,2);
+    ctx.fillStyle='#e06070';
+    ctx.fillRect(x-2,y-16+b,1,1);ctx.fillRect(x-1,y-15+b,3,1);ctx.fillRect(x+2,y-16+b,1,1);
+  } else {
+    if(girlBlink>0){
+      ctx.fillStyle=C.eye;
+      ctx.fillRect(x-5,y-19+b,3,1);ctx.fillRect(x+2,y-19+b,3,1);
+    } else {
+      ctx.fillStyle='#fff';
+      ctx.fillRect(x-5,y-20+b,3,3);ctx.fillRect(x+2,y-20+b,3,3);
+      ctx.fillStyle=C.eye;
+      ctx.fillRect(x-4,y-19+b,2,2);ctx.fillRect(x+3,y-19+b,2,2);
+      ctx.fillStyle='#fff';
+      ctx.fillRect(x-5,y-20+b,1,1);ctx.fillRect(x+2,y-20+b,1,1);
+      // Sad brows
+      ctx.fillStyle=C.hair;
+      ctx.fillRect(x-5,y-22+b,2,1);ctx.fillRect(x-4,y-23+b,1,1);
+      ctx.fillRect(x+3,y-22+b,2,1);ctx.fillRect(x+4,y-23+b,1,1);
+    }
+    ctx.fillStyle='rgba(240,150,150,0.35)';
+    ctx.fillRect(x-6,y-18+b,2,2);ctx.fillRect(x+4,y-18+b,2,2);
+    ctx.fillStyle=C.skinSh;
+    ctx.fillRect(x-1,y-15+b,3,1);
+    // Occasional tear
+    if(tick%140<25){
+      ctx.fillStyle='rgba(100,180,255,0.5)';
+      ctx.fillRect(x+4,y-18+b+((tick%140)/25)*3,1,1);
+    }
+  }
+}
+
+// ── PUPPY ──
+function drawPuppy(px,py,frame,licking,facingLeft){
+  const wag=Math.sin(frame*0.15);
+  const bounce=Math.abs(Math.sin(frame*0.1))*0.5;
+  const by=py-bounce;
+  const dir=facingLeft?-1:1;
+  ctx.fillStyle='rgba(0,0,0,0.08)';ctx.fillRect(px-4,py+5,8,2);
+  ctx.fillStyle=C.cream;ctx.fillRect(px-4,by,8,5);
+  ctx.fillStyle=C.white;ctx.fillRect(px-3,by-1,6,5);
+  ctx.fillStyle=C.cream;ctx.fillRect(px-4,by+1,1,2);ctx.fillRect(px+3,by+1,1,2);ctx.fillRect(px-2,by-2,2,1);ctx.fillRect(px+1,by-2,2,1);
+  ctx.fillStyle=C.cream;ctx.fillRect(px-3,by+4,2,2);ctx.fillRect(px+1,by+4,2,2);
+  ctx.fillStyle=C.white;ctx.fillRect(px-3+dir*2,by-5,6,5);ctx.fillRect(px-2+dir*2,by-6,4,1);
+  ctx.fillStyle=C.cream;ctx.fillRect(px-3+dir*2,by-6,1,2);ctx.fillRect(px+4+dir*2,by-6,1,2);
+  ctx.fillStyle=C.pupEar;ctx.fillRect(px-3+dir*2,by-7,2,3);ctx.fillRect(px+3+dir*2,by-7,2,3);
+  ctx.fillStyle=C.pupEye;ctx.fillRect(px+dir*2,by-3,1,1);ctx.fillRect(px+2+dir*2,by-3,1,1);
+  ctx.fillStyle=C.pupNose;ctx.fillRect(px+1+dir*2,by-2,1,1);
+  ctx.fillStyle=C.white;const tailX=px-dir*5,tailY=by-2+wag;
+  ctx.fillRect(tailX,tailY,2,2);ctx.fillRect(tailX-dir,tailY-1,1,1);
+  if(licking){
+    const tf=frame%30;
+    if(tf<15){
+      ctx.fillStyle=C.pupTongue;
+      const tl=1+Math.min(tf,7-Math.abs(tf-7));
+      ctx.fillRect(px+1+dir*3,by-1,dir*tl,1);
+      if(tf>3&&tf<12) ctx.fillRect(px+1+dir*4,by-2,dir,1);
+    }
+  }
+}
+
+// ── ROPE (game canvas) ──
+function drawRope(){
+  if(phase!=='pull') return;
+  const rx=GW-18,ry=58,rl=62,pullY=ry+ropeProgress*rl;
+  ctx.fillStyle='rgba(0,0,0,0.35)';ctx.fillRect(rx-6,ry-4,14,rl+18);
+  ctx.fillStyle='rgba(106,76,147,0.5)';ctx.fillRect(rx-5,ry-3,12,rl+16);
+  ctx.fillStyle='rgba(26,26,46,0.85)';ctx.fillRect(rx-4,ry-2,10,rl+14);
+  ctx.fillStyle=C.rope;ctx.fillRect(rx,ry,2,pullY-ry+1);
+  ctx.fillStyle=C.ropeHi;ctx.fillRect(rx-3,pullY-3,8,8);
+  ctx.fillStyle=C.rope;ctx.fillRect(rx-2,pullY-2,6,6);
+  ctx.fillStyle=C.ropeHi;ctx.fillRect(rx-1,pullY,4,2);
+  const ab=Math.sin(tick*0.1)*2;
+  ctx.fillStyle=C.star;ctx.fillRect(rx-1,pullY+10+ab,4,2);ctx.fillRect(rx,pullY+12+ab,2,2);
+}
+
+// ── PARTICLES ──
+function spawnHeart(x,y){hearts.push({x,y,vy:-0.4-Math.random()*0.4,life:70,vx:(Math.random()-0.5)*0.4});}
+function updateHearts(){for(let i=hearts.length-1;i>=0;i--){const h=hearts[i];h.x+=h.vx;h.y+=h.vy;h.life--;if(h.life<=0)hearts.splice(i,1);}}
+function drawHearts(){hearts.forEach(h=>{const a=h.life/70;ctx.fillStyle=`rgba(224,96,128,${a})`;ctx.fillRect(h.x,h.y,1,1);ctx.fillRect(h.x+2,h.y,1,1);ctx.fillRect(h.x-1,h.y+1,5,1);ctx.fillRect(h.x,h.y+2,3,1);ctx.fillRect(h.x+1,h.y+3,1,1);});}
+function spawnSparkle(x,y){sparkles.push({x,y,life:30,frame:0});}
+function updateSparkles(){for(let i=sparkles.length-1;i>=0;i--){sparkles[i].life--;sparkles[i].frame++;if(sparkles[i].life<=0)sparkles.splice(i,1);}}
+function drawSparkles(){sparkles.forEach(s=>{const a=s.life/30;ctx.fillStyle=`rgba(255,224,128,${a})`;ctx.fillRect(s.x,s.y-1,1,3);ctx.fillRect(s.x-1,s.y,3,1);});}
+
+// ── INPUT ──
+function getPos(e){const r=canvas.getBoundingClientRect(),t=e.touches?e.touches[0]:e;return{x:(t.clientX-r.left)/r.width*GW,y:(t.clientY-r.top)/r.height*GH};}
+canvas.addEventListener('touchstart',e=>{e.preventDefault();handleDown(getPos(e));},{passive:false});
+canvas.addEventListener('touchmove',e=>{e.preventDefault();if(e.touches.length)handleMove(getPos(e));},{passive:false});
+canvas.addEventListener('touchend',e=>{e.preventDefault();handleUp();},{passive:false});
+canvas.addEventListener('mousedown',e=>handleDown(getPos(e)));
+canvas.addEventListener('mousemove',e=>handleMove(getPos(e)));
+canvas.addEventListener('mouseup',handleUp);
+
+function handleDown(pos){
+  if(phase==='intro'){phase='pull';introOverlay.style.display='none';ropeOverlay.style.display='block';startMusic();return;}
+  if(phase==='text'){
+    if(typewriterInterval){clearInterval(typewriterInterval);typewriterInterval=null;textboxText.textContent=displayedText;textboxTap.textContent='toque ▸';textboxCursor.style.display='none';}
+    else{textboxOverlay.style.display='none';textboxTap.textContent='';if(puppyCount<12){phase='pull';ropeOverlay.style.display='block';}else startEnding();}
+    return;
+  }
+  if(phase==='pull'){startMusic();const rx=GW-18;if(pos.x>rx-22&&pos.x<rx+22&&pos.y>30&&pos.y<200){pulling=true;pullStartY=pos.y;ropeProgress=0;}}
+}
+function handleMove(pos){if(pulling&&phase==='pull'){ropeProgress=Math.max(0,Math.min(1,(pos.y-pullStartY)/60));if(ropeProgress>=0.95){pulling=false;ropeProgress=0;bringNextPuppy();}}}
+function handleUp(){pulling=false;}
+
+// ── TYPEWRITER ──
+function showTypewriter(text){
+  displayedText=text;textCharIndex=0;
+  textboxText.textContent='';textboxCursor.style.display='inline-block';textboxTap.textContent='';
+  textboxOverlay.style.display='block';
+  if(typewriterInterval) clearInterval(typewriterInterval);
+  typewriterInterval=setInterval(()=>{
+    textCharIndex++;textboxText.textContent=displayedText.substring(0,textCharIndex);
+    if(textCharIndex>=displayedText.length){clearInterval(typewriterInterval);typewriterInterval=null;textboxCursor.style.display='none';textboxTap.textContent='toque ▸';}
+  },40);
+}
+
+// ── GAME LOGIC ──
+function bringNextPuppy(){
+  if(puppyCount>=12) return;
+  puppies[puppyCount].arriving=true;puppyCount++;
+  ropeOverlay.style.display='none';ropeCount.textContent=puppyCount+'/12';
+  showTypewriter(TEXTS[puppyCount-1]||'');phase='text';
+  spawnSparkle(puppies[puppyCount-1].targetX,puppies[puppyCount-1].targetY);
+  for(let i=0;i<3;i++) spawnSparkle(CENTER_X-10+Math.random()*20,CENTER_Y-20+Math.random()*10);
+}
+
+function startEnding(){
+  phase='ending';endingTimer=0;
+  ropeOverlay.style.display='none';textboxOverlay.style.display='none';
+  puppies.forEach(p=>{p.targetX=p.lickX;p.targetY=p.lickY;p.arrived=false;p.licking=true;});
+}
+
+function update(){
+  tick++;
+  if(Math.random()<0.012) girlBlink=8;
+  if(girlBlink>0) girlBlink--;
+  puppies.forEach(p=>{
+    if(p.arriving||phase==='ending'||phase==='done'){
+      const dx=p.targetX-p.x,dy=p.targetY-p.y,dist=Math.sqrt(dx*dx+dy*dy);
+      if(dist<0.5){p.x=p.targetX;p.y=p.targetY;p.arrived=true;}
+      else{const spd=phase==='ending'||phase==='done'?0.05:0.08;p.x+=dx*spd;p.y+=dy*spd;}
+    }
+    p.frame++;
+  });
+  if(!pulling&&ropeProgress>0){ropeProgress*=0.88;if(ropeProgress<0.01)ropeProgress=0;}
+
+  if(phase==='ending'){
+    endingTimer++;
+    if(endingTimer%4===0){const rp=puppies[Math.random()*12|0];if(rp)spawnHeart(rp.x,rp.y-5);}
+    if(endingTimer>50) girlMood=1;
+    if(endingTimer>100&&endingTimer%8===0) spawnHeart(CENTER_X-5+Math.random()*10,CENTER_Y-30);
+    if(endingTimer>200){
+      phase='done';endingOverlay.style.display='flex';endingMsg.textContent='';
+      let ci=0;const fi=setInterval(()=>{ci++;endingMsg.textContent=FINAL_TEXT.substring(0,ci);if(ci>=FINAL_TEXT.length)clearInterval(fi);},60);
+    }
+  }
+  if(phase==='done'){
+    if(tick%6===0){const rp=puppies[Math.random()*12|0];if(rp)spawnHeart(rp.x,rp.y-5);}
+    if(tick%20===0) spawnHeart(CENTER_X-5+Math.random()*10,CENTER_Y-30);
+  }
+  updateHearts();updateSparkles();
+}
+
+function render(){
+  ctx.clearRect(0,0,GW,GH);
+  drawSky();drawGround();
+  puppies.forEach(p=>{if((p.arriving||p.arrived)&&p.y<CENTER_Y-3) drawPuppy(p.x,p.y,p.frame,p.licking,p.targetX>CENTER_X);});
+  drawGirl(CENTER_X,CENTER_Y,girlMood===1);
+  puppies.forEach(p=>{if((p.arriving||p.arrived)&&p.y>=CENTER_Y-3) drawPuppy(p.x,p.y,p.frame,p.licking,p.targetX>CENTER_X);});
+  drawHearts();drawSparkles();drawRope();
+}
+
+function gameLoop(){update();render();requestAnimationFrame(gameLoop);}
+
+initPuppyPositions();initFlowers();initGrass();
+setTimeout(()=>{document.getElementById('fade').style.opacity='0';},100);
+gameLoop();
+</script>
+</body>
+</html>
