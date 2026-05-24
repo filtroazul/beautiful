@@ -130,7 +130,37 @@ function initGrass(){grassOffset=[];for(let i=0;i<GW;i++) grassOffset.push(Math.
 
 const bgm=document.getElementById('bgm');
 let musicStarted=false;
-function startMusic(){if(musicStarted)return;musicStarted=true;bgm.volume=0.4;bgm.play().catch(()=>{});}
+let musicTrying=false;
+let removeMusicUnlockers=()=>{};
+function startMusic(){
+  if(musicStarted||musicTrying)return;
+  musicTrying=true;
+  bgm.volume=0.4;
+  bgm.muted=false;
+  const playPromise=bgm.play();
+  if(playPromise&&typeof playPromise.then==='function'){
+    playPromise.then(()=>{
+      musicStarted=true;
+      musicTrying=false;
+      removeMusicUnlockers();
+    }).catch(err=>{
+      musicTrying=false;
+      musicStarted=false;
+      console.warn('Musica ainda bloqueada pelo navegador:',err);
+    });
+  }else{
+    musicStarted=true;
+    musicTrying=false;
+    removeMusicUnlockers();
+  }
+}
+function installMusicUnlockers(){
+  const events=['pointerdown','touchstart','click','keydown'];
+  const unlock=()=>startMusic();
+  removeMusicUnlockers=()=>events.forEach(ev=>window.removeEventListener(ev,unlock,true));
+  events.forEach(ev=>window.addEventListener(ev,unlock,{capture:true,passive:true}));
+}
+installMusicUnlockers();
 
 // ── SKY ──
 function drawSky(){
